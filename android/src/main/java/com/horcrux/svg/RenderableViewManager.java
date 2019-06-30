@@ -6,12 +6,12 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-
 package com.horcrux.svg;
 
 import android.graphics.Matrix;
 import android.view.View;
 import android.view.ViewGroup;
+import android.util.Log;
 
 import com.facebook.react.bridge.Dynamic;
 import com.facebook.react.bridge.JavaOnlyMap;
@@ -27,9 +27,13 @@ import com.facebook.react.uimanager.TransformHelper;
 import com.facebook.react.uimanager.ViewGroupManager;
 import com.facebook.react.uimanager.annotations.ReactProp;
 import com.facebook.react.uimanager.annotations.ReactPropGroup;
+import com.facebook.react.common.MapBuilder;
+import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter;
+import com.facebook.react.bridge.*;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.Map;
 
 import static com.facebook.react.uimanager.MatrixMathHelper.determinant;
 import static com.facebook.react.uimanager.MatrixMathHelper.inverse;
@@ -50,96 +54,77 @@ import static com.horcrux.svg.RenderableView.JOIN_ROUND;
  * ViewManager for all RNSVG views
  */
 class RenderableViewManager extends ViewGroupManager<VirtualView> {
+    public static final int COMMAND_HIT_TEST = 1;
+    private ThemedReactContext myContext;
 
     enum SVGClass {
-        RNSVGGroup,
-        RNSVGPath,
-        RNSVGText,
-        RNSVGTSpan,
-        RNSVGTextPath,
-        RNSVGImage,
-        RNSVGCircle,
-        RNSVGEllipse,
-        RNSVGLine,
-        RNSVGRect,
-        RNSVGClipPath,
-        RNSVGDefs,
-        RNSVGUse,
-        RNSVGSymbol,
-        RNSVGLinearGradient,
-        RNSVGRadialGradient,
-        RNSVGPattern,
-        RNSVGMask,
+        RNSVGGroup, RNSVGPath, RNSVGText, RNSVGTSpan, RNSVGTextPath, RNSVGImage, RNSVGCircle, RNSVGEllipse, RNSVGLine,
+        RNSVGRect, RNSVGClipPath, RNSVGDefs, RNSVGUse, RNSVGSymbol, RNSVGLinearGradient, RNSVGRadialGradient,
+        RNSVGPattern, RNSVGMask,
+    }
+
+    public @Nullable Map<String, Integer> getCommandsMap() {
+        Log.d("ReactNativeJS", "View manager getCommandsMap");
+        return MapBuilder.of("hitTest", COMMAND_HIT_TEST);
+    }
+
+    @Override
+    public void receiveCommand(VirtualView view, int commandType, @Nullable ReadableArray args) {
+        switch (commandType) {
+        case COMMAND_HIT_TEST: {
+            final float x = (float) args.getDouble(0);
+            final float y = (float) args.getDouble(1);
+            final float[] point = { x, y };
+            SvgView root = view.getSvgView();
+            int result = root.myHitTest(x, y) ? 1 : 0;
+            sendHitTestResultEvent(result);
+            return;
+        }
+
+        default:
+            throw new IllegalArgumentException(
+                    String.format("Unsupported command %d received by %s.", commandType, getClass().getSimpleName()));
+        }
+    }
+
+    private RCTDeviceEventEmitter emitter() {
+        return myContext.getJSModule(RCTDeviceEventEmitter.class);
+    }
+
+    private void pushPayload(String event, WritableMap payload) {
+        emitter().emit(event, payload);
+    }
+
+    public void sendHitTestResultEvent(int result) {
+        WritableMap data = Arguments.createMap();
+        data.putInt("result", (int) result);
+        pushPayload("hitTestResultEvent", data);
     }
 
     class RenderableShadowNode extends LayoutShadowNode {
 
-        @SuppressWarnings({"unused", "EmptyMethod"})
-        @ReactPropGroup(
-            names = {
-                ALIGN_SELF,
-                ALIGN_ITEMS,
-                COLLAPSABLE,
-                FLEX,
-                FLEX_BASIS,
-                FLEX_DIRECTION,
-                FLEX_GROW,
-                FLEX_SHRINK,
-                FLEX_WRAP,
-                JUSTIFY_CONTENT,
-                OVERFLOW,
-                ALIGN_CONTENT,
-                DISPLAY,
+        @SuppressWarnings({ "unused", "EmptyMethod" })
+        @ReactPropGroup(names = { ALIGN_SELF, ALIGN_ITEMS, COLLAPSABLE, FLEX, FLEX_BASIS, FLEX_DIRECTION, FLEX_GROW,
+                FLEX_SHRINK, FLEX_WRAP, JUSTIFY_CONTENT, OVERFLOW, ALIGN_CONTENT, DISPLAY,
 
                 /* position */
-                POSITION,
-                RIGHT,
-                TOP,
-                BOTTOM,
-                LEFT,
-                START,
-                END,
+                POSITION, RIGHT, TOP, BOTTOM, LEFT, START, END,
 
                 /* dimensions */
-                WIDTH,
-                HEIGHT,
-                MIN_WIDTH,
-                MAX_WIDTH,
-                MIN_HEIGHT,
-                MAX_HEIGHT,
+                WIDTH, HEIGHT, MIN_WIDTH, MAX_WIDTH, MIN_HEIGHT, MAX_HEIGHT,
 
                 /* margins */
-                MARGIN,
-                MARGIN_VERTICAL,
-                MARGIN_HORIZONTAL,
-                MARGIN_LEFT,
-                MARGIN_RIGHT,
-                MARGIN_TOP,
-                MARGIN_BOTTOM,
-                MARGIN_START,
-                MARGIN_END,
+                MARGIN, MARGIN_VERTICAL, MARGIN_HORIZONTAL, MARGIN_LEFT, MARGIN_RIGHT, MARGIN_TOP, MARGIN_BOTTOM,
+                MARGIN_START, MARGIN_END,
 
                 /* paddings */
-                PADDING,
-                PADDING_VERTICAL,
-                PADDING_HORIZONTAL,
-                PADDING_LEFT,
-                PADDING_RIGHT,
-                PADDING_TOP,
-                PADDING_BOTTOM,
-                PADDING_START,
-                PADDING_END,
+                PADDING, PADDING_VERTICAL, PADDING_HORIZONTAL, PADDING_LEFT, PADDING_RIGHT, PADDING_TOP, PADDING_BOTTOM,
+                PADDING_START, PADDING_END,
 
-                BORDER_WIDTH,
-                BORDER_START_WIDTH,
-                BORDER_END_WIDTH,
-                BORDER_TOP_WIDTH,
-                BORDER_BOTTOM_WIDTH,
-                BORDER_LEFT_WIDTH,
-                BORDER_RIGHT_WIDTH,
-            }
-        )
-        public void ignoreLayoutProps(int index, Dynamic value) {}
+                BORDER_WIDTH, BORDER_START_WIDTH, BORDER_END_WIDTH, BORDER_TOP_WIDTH, BORDER_BOTTOM_WIDTH,
+                BORDER_LEFT_WIDTH, BORDER_RIGHT_WIDTH, })
+        public void ignoreLayoutProps(int index, Dynamic value) {
+        }
     }
 
     @Override
@@ -152,7 +137,6 @@ class RenderableViewManager extends ViewGroupManager<VirtualView> {
         return RenderableShadowNode.class;
     }
 
-
     private final SVGClass svgClass;
     private final String mClassName;
 
@@ -164,8 +148,7 @@ class RenderableViewManager extends ViewGroupManager<VirtualView> {
         final double[] rotationDegrees = new double[3];
     }
 
-    private static final MatrixDecompositionContext sMatrixDecompositionContext =
-            new MatrixDecompositionContext();
+    private static final MatrixDecompositionContext sMatrixDecompositionContext = new MatrixDecompositionContext();
     private static final double[] sTransformDecompositionArray = new double[16];
 
     private static final int PERSPECTIVE_ARRAY_INVERTED_CAMERA_DISTANCE_INDEX = 2;
@@ -215,12 +198,8 @@ class RenderableViewManager extends ViewGroupManager<VirtualView> {
 
             // Solve the equation by inverting perspectiveMatrix and multiplying
             // rightHandSide by the inverse.
-            double[] inversePerspectiveMatrix = inverse(
-                    perspectiveMatrix
-            );
-            double[] transposedInversePerspectiveMatrix = transpose(
-                    inversePerspectiveMatrix
-            );
+            double[] inversePerspectiveMatrix = inverse(perspectiveMatrix);
+            double[] transposedInversePerspectiveMatrix = transpose(inversePerspectiveMatrix);
             multiplyVectorByMatrix(rightHandSide, transposedInversePerspectiveMatrix, perspective);
         } else {
             // no perspective
@@ -270,7 +249,7 @@ class RenderableViewManager extends ViewGroupManager<VirtualView> {
         skew[2] /= scale[2];
 
         // At this point, the matrix (in rows) is orthonormal.
-        // Check for a coordinate system flip.  If the determinant
+        // Check for a coordinate system flip. If the determinant
         // is -1, then negate the matrix and the scaling factors.
         double[] pdum3 = v3Cross(row[1], row[2]);
         if (v3Dot(row[0], pdum3) < 0) {
@@ -286,17 +265,16 @@ class RenderableViewManager extends ViewGroupManager<VirtualView> {
         // Based on: http://nghiaho.com/?page_id=846
         double conv = 180 / Math.PI;
         rotationDegrees[0] = roundTo3Places(-Math.atan2(row[2][1], row[2][2]) * conv);
-        rotationDegrees[1] = roundTo3Places(-Math.atan2(-row[2][0], Math.sqrt(row[2][1] * row[2][1] + row[2][2] * row[2][2])) * conv);
+        rotationDegrees[1] = roundTo3Places(
+                -Math.atan2(-row[2][0], Math.sqrt(row[2][1] * row[2][1] + row[2][2] * row[2][2])) * conv);
         rotationDegrees[2] = roundTo3Places(-Math.atan2(row[1][0], row[0][0]) * conv);
     }
 
     private static void setTransformProperty(View view, ReadableArray transforms) {
         TransformHelper.processTransform(transforms, sTransformDecompositionArray);
         decomposeMatrix();
-        view.setTranslationX(
-                PixelUtil.toPixelFromDIP((float) sMatrixDecompositionContext.translation[0]));
-        view.setTranslationY(
-                PixelUtil.toPixelFromDIP((float) sMatrixDecompositionContext.translation[1]));
+        view.setTranslationX(PixelUtil.toPixelFromDIP((float) sMatrixDecompositionContext.translation[0]));
+        view.setTranslationY(PixelUtil.toPixelFromDIP((float) sMatrixDecompositionContext.translation[1]));
         view.setRotation((float) sMatrixDecompositionContext.rotationDegrees[2]);
         view.setRotationX((float) sMatrixDecompositionContext.rotationDegrees[0]);
         view.setRotationY((float) sMatrixDecompositionContext.rotationDegrees[1]);
@@ -355,19 +333,18 @@ class RenderableViewManager extends ViewGroupManager<VirtualView> {
         public void setFontSize(GroupView node, Dynamic fontSize) {
             JavaOnlyMap map = new JavaOnlyMap();
             switch (fontSize.getType()) {
-                case Number:
-                    map.putDouble("fontSize", fontSize.asDouble());
-                    break;
-                case String:
-                    map.putString("fontSize", fontSize.asString());
-                    break;
-                default:
-                    return;
+            case Number:
+                map.putDouble("fontSize", fontSize.asDouble());
+                break;
+            case String:
+                map.putString("fontSize", fontSize.asString());
+                break;
+            default:
+                return;
             }
             node.setFont(map);
         }
     }
-
 
     static class PathViewManager extends RenderableViewManager {
         PathViewManager() {
@@ -493,7 +470,7 @@ class RenderableViewManager extends ViewGroupManager<VirtualView> {
     }
 
     static class ImageViewManager extends RenderableViewManager {
-        ImageViewManager(){
+        ImageViewManager() {
             super(SVGClass.RNSVGImage);
         }
 
@@ -521,7 +498,6 @@ class RenderableViewManager extends ViewGroupManager<VirtualView> {
         public void setSrc(ImageView node, @Nullable ReadableMap src) {
             node.setSrc(src);
         }
-
 
         @ReactProp(name = "align")
         public void setAlign(ImageView node, String align) {
@@ -972,7 +948,6 @@ class RenderableViewManager extends ViewGroupManager<VirtualView> {
         node.setFillRule(fillRule);
     }
 
-
     @ReactProp(name = "stroke")
     public void setStroke(RenderableView node, @Nullable Dynamic strokeColors) {
         node.setStroke(strokeColors);
@@ -1056,11 +1031,11 @@ class RenderableViewManager extends ViewGroupManager<VirtualView> {
 
     private void invalidateSvgView(VirtualView node) {
         SvgView view = node.getSvgView();
-        if (view!= null) {
+        if (view != null) {
             view.invalidate();
         }
         if (node instanceof TextView) {
-            ((TextView)node).getTextContainer().clearChildCache();
+            ((TextView) node).getTextContainer().clearChildCache();
         }
     }
 
@@ -1085,10 +1060,11 @@ class RenderableViewManager extends ViewGroupManager<VirtualView> {
     }
 
     /**
-     * Callback that will be triggered after all properties are updated in current update transaction
-     * (all @ReactProp handlers for properties updated in current transaction have been called). If
-     * you want to override this method you should call super.onAfterUpdateTransaction from it as
-     * the parent class of the ViewManager may rely on callback being executed.
+     * Callback that will be triggered after all properties are updated in current
+     * update transaction (all @ReactProp handlers for properties updated in current
+     * transaction have been called). If you want to override this method you should
+     * call super.onAfterUpdateTransaction from it as the parent class of the
+     * ViewManager may rely on callback being executed.
      */
     @Override
     protected void onAfterUpdateTransaction(@Nonnull VirtualView node) {
@@ -1099,45 +1075,46 @@ class RenderableViewManager extends ViewGroupManager<VirtualView> {
     @Nonnull
     @Override
     protected VirtualView createViewInstance(@Nonnull ThemedReactContext reactContext) {
+        this.myContext = reactContext;
         switch (svgClass) {
-            case RNSVGGroup:
-                return new GroupView(reactContext);
-            case RNSVGPath:
-                return new PathView(reactContext);
-            case RNSVGCircle:
-                return new CircleView(reactContext);
-            case RNSVGEllipse:
-                return new EllipseView(reactContext);
-            case RNSVGLine:
-                return new LineView(reactContext);
-            case RNSVGRect:
-                return new RectView(reactContext);
-            case RNSVGText:
-                return new TextView(reactContext);
-            case RNSVGTSpan:
-                return new TSpanView(reactContext);
-            case RNSVGTextPath:
-                return new TextPathView(reactContext);
-            case RNSVGImage:
-                return new ImageView(reactContext);
-            case RNSVGClipPath:
-                return new ClipPathView(reactContext);
-            case RNSVGDefs:
-                return new DefsView(reactContext);
-            case RNSVGUse:
-                return new UseView(reactContext);
-            case RNSVGSymbol:
-                return new SymbolView(reactContext);
-            case RNSVGLinearGradient:
-                return new LinearGradientView(reactContext);
-            case RNSVGRadialGradient:
-                return new RadialGradientView(reactContext);
-            case RNSVGPattern:
-                return new PatternView(reactContext);
-            case RNSVGMask:
-                return new MaskView(reactContext);
-            default:
-                throw new IllegalStateException("Unexpected type " + svgClass.toString());
+        case RNSVGGroup:
+            return new GroupView(reactContext);
+        case RNSVGPath:
+            return new PathView(reactContext);
+        case RNSVGCircle:
+            return new CircleView(reactContext);
+        case RNSVGEllipse:
+            return new EllipseView(reactContext);
+        case RNSVGLine:
+            return new LineView(reactContext);
+        case RNSVGRect:
+            return new RectView(reactContext);
+        case RNSVGText:
+            return new TextView(reactContext);
+        case RNSVGTSpan:
+            return new TSpanView(reactContext);
+        case RNSVGTextPath:
+            return new TextPathView(reactContext);
+        case RNSVGImage:
+            return new ImageView(reactContext);
+        case RNSVGClipPath:
+            return new ClipPathView(reactContext);
+        case RNSVGDefs:
+            return new DefsView(reactContext);
+        case RNSVGUse:
+            return new UseView(reactContext);
+        case RNSVGSymbol:
+            return new SymbolView(reactContext);
+        case RNSVGLinearGradient:
+            return new LinearGradientView(reactContext);
+        case RNSVGRadialGradient:
+            return new RadialGradientView(reactContext);
+        case RNSVGPattern:
+            return new PatternView(reactContext);
+        case RNSVGMask:
+            return new MaskView(reactContext);
+        default:
+            throw new IllegalStateException("Unexpected type " + svgClass.toString());
         }
     }
 }

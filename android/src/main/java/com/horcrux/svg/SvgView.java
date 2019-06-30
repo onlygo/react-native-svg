@@ -32,6 +32,7 @@ import com.facebook.react.views.view.ReactViewGroup;
 import java.io.ByteArrayOutputStream;
 import java.util.HashMap;
 import java.util.Map;
+import android.util.Log;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -127,6 +128,15 @@ public class SvgView extends ReactViewGroup implements ReactCompoundView, ReactC
     @Override
     public int reactTagForTouch(float touchX, float touchY) {
         return hitTest(touchX, touchY);
+    }
+
+    public boolean myHitTest(float touchX, float touchY) {
+        int count = getChildCount();
+        GroupView g1 = (GroupView)getChildAt(0);
+        GroupView g2 = (GroupView)g1.getChildAt(0);
+        int targetId = g2.getChildAt(0).getId();
+
+        return (hitTest(touchX, touchY) == targetId);
     }
 
     private boolean mResponsible = false;
@@ -353,7 +363,7 @@ public class SvgView extends ReactViewGroup implements ReactCompoundView, ReactC
         return mResponsible;
     }
 
-    private int hitTest(float touchX, float touchY) {
+    public int hitTest(float touchX, float touchY) {
         if (!mResponsible || !mInvertible) {
             return getId();
         }
